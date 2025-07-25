@@ -1,0 +1,77 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  postgresql:
+    image: postgres:latest
+    container_name: postgresql
+    ports:
+      - "5611:5432"
+    environment:
+      - POSTGRES_USER=username
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - ./live_order_monitoring:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    ports:
+      - "9977:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@local.dev
+      - PGADMIN_DEFAULT_PASSWORD=password
+    restart: unless-stopped
+
+  orders-service:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    container_name: orders-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgresql
+      - redis
+
+  users-service:
+    build:
+      context: ..
+      dockerfile: services/users/Dockerfile
+    container_name: users-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgresql
+      - redis
+
+  gateway:
+    build:
+      context: ../gateway
+    container_name: gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orders-service
+      - users-service
+      - redis
+    environment:
+      - JWT_SECRET=your-secret-key
+      - REDIS_HOST=redis
+      - USERS_SERVICE_URL=http://users-service:8081
+      - ORDERS_SERVICE_URL=http://orders-service:8080
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: frontend
+    ports:
+      - "3001:3000"
+    depends_on:
+      - gateway
